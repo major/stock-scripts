@@ -59,7 +59,7 @@ Let's say you're interested in TSLA options that:
 Run the script like this:
 
 ```
-./put_finder.py --pop-min 75 --pop-max 85 --min-return 20 --dte-max 21 GME
+./put_finder.py --pop-min 75 --pop-max 85 --min-return 20 --dte-max 21 TSLA
 |      |   Strike | Exp Date   |   DTE |   PoP % |   Delta |   Ret. % |   Annual %  |
 |------|----------|------------|-------|---------|---------|----------|-------------|
 | TSLA |    672.5 | 2021-01-08 |     6 |    75.6 |    0.28 |      1.7 |       100.7 |
