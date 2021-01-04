@@ -33,13 +33,6 @@ import pandas as pd
 import tdameritrade as td
 
 
-def get_pop(delta):
-    """Rough function to get PoP via delta."""
-    if isinstance(delta, float):
-        return (1 - abs(delta)) * 100
-
-    return 0
-
 def get_returns(bid, strike_price, dte):
     """Calculate return and annual return for a sold option."""
     put_return = (bid / (strike_price - bid) * 100)
