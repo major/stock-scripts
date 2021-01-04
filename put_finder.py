@@ -74,7 +74,12 @@ parser.add_argument(
     help="Maximum days until expiration",
     default=60
 )
-parser.add_argument("ticker", help="Stock ticker symbol", default="GME")
+parser.add_argument(
+    "ticker",
+    help="Stock ticker symbol",
+    default="GME",
+    nargs="+"
+)
 args = parser.parse_args()
 
 
@@ -93,16 +98,21 @@ def main():
     max_exp = dt.datetime.now() + dt.timedelta(days=args.dte_max)
 
     # Get the options chain as a pandas dataframe. (Thanks dobby. 🤗)
-    try:
-        options = client.optionsDF(
-            args.ticker,
-            contractType="PUT",
-            includeQuotes=True,
-            toDate=max_exp.strftime("%Y-%m-%d"),
-            optionType="S",
-        )
-    except KeyError:
-        sys.exit(f"Could not find ticker: {args.ticker}")
+    chains = []
+    for ticker in args.ticker:
+        try:
+            chain = client.optionsDF(
+                ticker,
+                contractType="PUT",
+                includeQuotes=True,
+                toDate=max_exp.strftime("%Y-%m-%d"),
+                optionType="S",
+            )
+            chains.append(chain)
+        except KeyError:
+            sys.exit(f"Could not find ticker: {ticker}")
+
+    options = pd.concat(chains)
 
     # Calculate a return for the trade and an annualized return.
     options["putReturn"], options['annualReturn'] = get_returns(
