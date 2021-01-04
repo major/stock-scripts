@@ -17,44 +17,45 @@
 # specific language governing permissions and limitations
 # under the License.
 #
-# To create a configuration file, add a small json file into ~/.robinhood.json
-# that contains the following:
+# To set up TDA's authentication, use the simple script and instructions here:
+# https://github.com/areed1192/td-ameritrade-python-api#api-key-and-credentials
 #
-# {
-#   "login": "",
-#   "password": "",
-#   "totp": ""
-# }
-#
-# Your login/password are what you normally use to login at robinhood.com. The
-# TOTP is your alphanumberic 2FA token. This is displayed when you first
-# configure 2FA at Robinhood.
+# Create a creds.yaml that contains two keys:
+#   client_id: From your developer account
+#   refresh_token: From the authentication step above
 #
 import argparse
-from datetime import datetime
-import json
-import logging
-import os
+import datetime as dt
 import sys
+import yaml
 
-import pyotp
-import robin_stocks as r
-from tabulate import tabulate
-
-logging.basicConfig(level=logging.INFO)
+import pandas as pd
+import tdameritrade as td
 
 
-def get_days_to_expiration(expiration_date):
-    """Calculate the days between today and the option expiration date."""
-    expiry = datetime.strptime(expiration_date, "%Y-%m-%d")
-    time_left = datetime.now() - expiry
-    return abs(time_left.days)
+def get_pop(delta):
+    """Rough function to get PoP via delta."""
+    if isinstance(delta, float):
+        return (1 - abs(delta)) * 100
+
+    return 0
+
+def get_returns(bid, strike_price, dte):
+    """Calculate return and annual return for a sold option."""
+    put_return = (bid / (strike_price - bid) * 100)
+    annual_return = put_return / dte * 365
+    return (round(put_return, 1), round(annual_return, 1))
 
 
 # Parse the arguments.
 parser = argparse.ArgumentParser(
     description="Find options that meet an annual rate of return requirement",
-    formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+)
+parser.add_argument(
+    "--credentials-path",
+    default="./creds.yaml",
+    help="TD Ameritrade Credentials Path",
 )
 parser.add_argument(
     "--pop-min",
@@ -72,7 +73,7 @@ parser.add_argument(
     "--min-return",
     type=int,
     help="Minimum annual return percentage",
-    default=20
+    default=20,
 )
 parser.add_argument(
     "--dte-max",
@@ -80,111 +81,89 @@ parser.add_argument(
     help="Maximum days until expiration",
     default=60
 )
-parser.add_argument(
-    "ticker",
-    help="Stock ticker symbol",
-    default="GME"
-)
+parser.add_argument("ticker", help="Stock ticker symbol", default="GME")
 args = parser.parse_args()
 
-# Read the Robinhood configuration.
-CONFIG_FILE = os.path.expanduser("~/.robinhood.json")
-with open(CONFIG_FILE, 'r') as fileh:
-    config = json.loads(fileh.read())
 
-totp = pyotp.TOTP(config['totp']).now()
-login = r.login(config['login'], config['password'], mfa_code=totp)
+def main():
+    # Read TDA credentials file.
+    with open(args.credentials_path, "r") as fileh:
+        config = yaml.safe_load(fileh.read())
 
-# Check if the ticker exists.
-if r.stocks.get_fundamentals(args.ticker) == [None]:
-    sys.exit(f"Cound not find ticker: {args.ticker}")
-
-# Find all option expiration dates which are within our DTE requirement.
-valid_expiration_dates = [
-    x for x in r.options.get_chains(args.ticker)['expiration_dates']
-    if get_days_to_expiration(x) <= args.dte_max
-]
-
-
-# Set up our variables that hold option data.
-option_data = []
-low_return_counter = 0
-
-# Loop over each expiration date to retrieve options.
-for expiration_date in valid_expiration_dates:
-    logging.info(f"Getting {args.ticker} options for {expiration_date}")
-
-    options = r.find_options_by_expiration(
-        args.ticker,
-        expirationDate=expiration_date,
-        optionType="put"
+    # Connect to TDA's API.
+    client = td.TDClient(
+        client_id=config["client_id"],
+        refresh_token=config["refresh_token"]
     )
 
-    for opt in options:
-        # Get all of the options on the expiration date for this ticker.
-        dte = get_days_to_expiration(opt["expiration_date"])
+    # Set the max DTE for options chains.
+    max_exp = dt.datetime.now() + dt.timedelta(days=args.dte_max)
 
-        # Sometimes Robinhood says that delta is None. 🤷🏻‍♂️
-        delta = 0
-        if opt['delta']:
-            delta = float(opt['delta'].replace('-', ''))
-
-        # Do the math for our return and annualized return.
-        bid_price = float(opt['bid_price'])
-        strike_price = float(opt['strike_price'])
-        put_return = (bid_price / (strike_price - bid_price))
-        annual_return = put_return / dte * 365
-
-        # Skip this one if the percent of profit does not meet our spec.
-        if not opt['chance_of_profit_short']:
-            continue
-        chance_of_profit = float(opt['chance_of_profit_short'])
-        if chance_of_profit < (args.pop_min / 100):
-            continue
-        if chance_of_profit > (args.pop_max / 100):
-            continue
-
-        # Skip this one if the annual return is below our threshold.
-        if annual_return < (args.min_return / 100):
-            low_return_counter += 1
-            continue
-
-        # Add this data to our table.
-        option_data.append(
-            [
-                opt["chain_symbol"],
-                opt["strike_price"],
-                opt["expiration_date"],
-                dte,
-                f"{chance_of_profit * 100:.1f}",
-                f"{delta:.2f}",
-                f"{put_return * 100:.1f}",
-                f"{annual_return * 100:.1f}",
-            ]
+    # Get the options chain as a pandas dataframe. (Thanks dobby. 🤗)
+    try:
+        options = client.optionsDF(
+            args.ticker,
+            contractType="PUT",
+            includeQuotes=True,
+            toDate=max_exp.strftime("%Y-%m-%d"),
+            optionType="S",
         )
+    except KeyError:
+        sys.exit(f"Could not find ticker: {args.ticker}")
 
-# Sort by the annual return column.
-option_data.sort(key=lambda x: float(x[7]), reverse=True)
+    # Calculate a return for the trade and an annualized return.
+    options["putReturn"], options['annualReturn'] = get_returns(
+        options['bid'],
+        options['strikePrice'],
+        options["daysToExpiration"]
+    )
 
-# Add our table headers.
-headers = [
-    "",
-    "Strike",
-    "Exp Date",
-    "DTE",
-    "PoP %",
-    "Delta",
-    "Ret. %",
-    "Annual % ",
-]
+    # Handle situations where 'delta' is NaN for a certain strike. Usually all
+    # of the greeks are missing for these.
+    options["delta"] = pd.to_numeric(options["delta"], errors="coerce")
 
-# Print our table.
-table = tabulate(option_data, headers=headers, tablefmt="github")
-print(table)
+    # Calculate PoP based on the delta.
+    options["pop"] = (1 - options['delta'].abs()) * 100
 
-# Show if we had extra options that didn't meet our annual return requirement.
-print(
-    "\n"
-    f"Options found below annual return threshold of {args.min_return}%: "
-    f"{low_return_counter}"
-)
+    # Remove the time of day information from the expiration date.
+    options['expirationDate'] = options['expirationDate'].dt.strftime(
+        "%Y-%m-%d"
+    )
+
+    # Select options that meet all of our requirements.
+    selected = options[
+        (options["annualReturn"] >= args.min_return)
+        & (args.pop_min <= options["pop"])
+        & (options["pop"] <= args.pop_max)
+    ].sort_values('annualReturn', ascending=False)
+
+    # Create a view with the columns we care about.
+    view = selected[
+        [
+            "symbol",
+            "strikePrice",
+            "expirationDate",
+            "daysToExpiration",
+            "bid",
+            "pop",
+            "putReturn",
+            "annualReturn",
+        ]
+    ]
+    print(
+        view.rename(
+            columns={
+                "symbol": "💸",
+                "strikePrice": "Strike",
+                "expirationDate": "Exp Date",
+                "daysToExpiration": "DTE",
+                "bid": "Bid",
+                "pop": "PoP %",
+                "putReturn": "Ret. %",
+                "annualReturn": "Annual %",
+            }
+        ).to_markdown(index=False)
+    )
+
+if __name__ == "__main__":
+    main()
