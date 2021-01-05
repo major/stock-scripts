@@ -13,20 +13,12 @@ return = bid_price / (strike_price - bid_price)
 annualized_return = return * DTE * 365
 ```
 
-The script uses TD Ameritrade's API to get information about option data.
-Authentication is a little unusual, so [follow the guide provided here]. When
-you're finished, you should have a `refresh_token` in a credentials file.
+The `get_tda_token.py` script will generate the `creds.yaml` that contains
+your `client_id` and `refresh_token` that are required for the script to work.
+See the comments in the script for the steps required for creating a TD
+Ameritrade developer account.
 
-Create a small YAML file called `creds.yaml` that looks like:
-
-```yaml
-client_id: <from your TDA developer account>
-refresh_token: <from the authentication steps linked above>
-```
-
-[follow the guide provided here]: https://github.com/areed1192/td-ameritrade-python-api#api-key-and-credentials
-
-The script takes a few arguments:
+The main script takes a few arguments:
 
 ```
 ➜ ./put_finder.py --help
