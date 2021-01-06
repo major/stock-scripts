@@ -8,7 +8,7 @@ option investments.
 The `put_finder.py` script searches for put options to sell that meet your
 annual return requirements. The returns are calculated like this:
 
-```
+```python
 return = bid_price / (strike_price - bid_price)
 annualized_return = return * DTE * 365
 ```
@@ -20,7 +20,7 @@ Ameritrade developer account.
 
 The main script takes a few arguments:
 
-```
+```shell
 ➜ ./put_finder.py --help
 usage: put_finder.py [-h] [--credentials-path CREDENTIALS_PATH] [--pop-min POP_MIN] [--pop-max POP_MAX] [--min-return MIN_RETURN] [--dte-max DTE_MAX] ticker
 
@@ -49,7 +49,7 @@ Let's say you're interested in TSLA options that:
 
 Run the script like this:
 
-```
+```shell
 ➜ ./put_finder.py --pop-min 75 --pop-max 85 --min-return 50 --dte-max 21 TSLA
 | 💸                |   Strike | Exp Date   |   DTE |   Bid |   PoP % |   Ret. % |   Annual % |
 |:------------------|---------:|:-----------|------:|------:|--------:|---------:|-----------:|
@@ -65,5 +65,3 @@ Run the script like this:
 ```
 
 All of the available puts to sell that meet your requirements are displayed.
-
-[robin-stocks login documentation]: https://robin-stocks.readthedocs.io/en/latest/quickstart.html#importing-and-logging-in
