@@ -27,15 +27,15 @@
 import argparse
 import datetime as dt
 import sys
-import yaml
 
 import pandas as pd
 import tdameritrade as td
+import yaml
 
 
 def get_returns(bid, strike_price, dte):
     """Calculate return and annual return for a sold option."""
-    put_return = (bid / (strike_price - bid) * 100)
+    put_return = bid / (strike_price - bid) * 100
     annual_return = put_return / dte * 365
     return (round(put_return, 1), round(annual_return, 1))
 
@@ -51,16 +51,10 @@ parser.add_argument(
     help="TD Ameritrade Credentials Path",
 )
 parser.add_argument(
-    "--pop-min",
-    type=int,
-    help="Minimum percent chance of profit",
-    default=70
+    "--pop-min", type=int, help="Minimum percent chance of profit", default=70
 )
 parser.add_argument(
-    "--pop-max",
-    type=int,
-    help="Maximum percent chance of profit",
-    default=90
+    "--pop-max", type=int, help="Maximum percent chance of profit", default=90
 )
 parser.add_argument(
     "--min-return",
@@ -69,16 +63,10 @@ parser.add_argument(
     default=20,
 )
 parser.add_argument(
-    "--dte-max",
-    type=int,
-    help="Maximum days until expiration",
-    default=60
+    "--dte-max", type=int, help="Maximum days until expiration", default=60
 )
 parser.add_argument(
-    "ticker",
-    help="Stock ticker symbol",
-    default="GME",
-    nargs="+"
+    "ticker", help="Stock ticker symbol", default="GME", nargs="+"
 )
 args = parser.parse_args()
 
@@ -90,8 +78,7 @@ def main():
 
     # Connect to TDA's API.
     client = td.TDClient(
-        client_id=config["client_id"],
-        refresh_token=config["refresh_token"]
+        client_id=config["client_id"], refresh_token=config["refresh_token"]
     )
 
     # Set the max DTE for options chains.
@@ -115,10 +102,8 @@ def main():
     options = pd.concat(chains)
 
     # Calculate a return for the trade and an annualized return.
-    options["putReturn"], options['annualReturn'] = get_returns(
-        options['bid'],
-        options['strikePrice'],
-        options["daysToExpiration"]
+    options["putReturn"], options["annualReturn"] = get_returns(
+        options["bid"], options["strikePrice"], options["daysToExpiration"]
     )
 
     # Handle situations where 'delta' is NaN for a certain strike. Usually all
@@ -126,10 +111,10 @@ def main():
     options["delta"] = pd.to_numeric(options["delta"], errors="coerce")
 
     # Calculate PoP based on the delta.
-    options["pop"] = (1 - options['delta'].abs()) * 100
+    options["pop"] = (1 - options["delta"].abs()) * 100
 
     # Remove the time of day information from the expiration date.
-    options['expirationDate'] = options['expirationDate'].dt.strftime(
+    options["expirationDate"] = options["expirationDate"].dt.strftime(
         "%Y-%m-%d"
     )
 
@@ -138,7 +123,7 @@ def main():
         (options["annualReturn"] >= args.min_return)
         & (args.pop_min <= options["pop"])
         & (options["pop"] <= args.pop_max)
-    ].sort_values('annualReturn', ascending=False)
+    ].sort_values("annualReturn", ascending=False)
 
     # Create a view with the columns we care about.
     view = selected[
@@ -167,6 +152,7 @@ def main():
             }
         ).to_markdown(index=False)
     )
+
 
 if __name__ == "__main__":
     main()
